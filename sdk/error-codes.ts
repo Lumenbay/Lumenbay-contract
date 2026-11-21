@@ -346,6 +346,12 @@ export const MARKETX_ERRORS: Readonly<Record<number, ContractErrorInfo>> = {
     recovery:
       'Wait until the ready_at ledger reported by get_pending_upgrade before executing.',
   },
+  182: {
+    code: 'AlreadyInitialized',
+    message: 'The contract has already been initialized.',
+    recovery:
+      'Initialization runs once. Use transfer_admin / set_fee_collector / set_fee_percentage to change settings.',
+  },
 } as const;
 
 /**

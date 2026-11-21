@@ -129,8 +129,13 @@ impl Contract {
             .get(&DataKey::Escrow(escrow_id))
             .ok_or(ContractError::EscrowNotFound)?;
 
-        // 2. Validate escrow is in a fundable state
-        if escrow.status != EscrowStatus::Pending && escrow.status != EscrowStatus::Funded {
+        // 2. Validate escrow is in a fundable state. Funding twice would pull the
+        //    amount again while release only pays out `escrow.amount` once,
+        //    stranding the second deposit in the contract.
+        if escrow.status == EscrowStatus::Funded {
+            return Err(ContractError::EscrowAlreadyFunded);
+        }
+        if escrow.status != EscrowStatus::Pending {
             return Err(ContractError::InvalidEscrowState);
         }
 

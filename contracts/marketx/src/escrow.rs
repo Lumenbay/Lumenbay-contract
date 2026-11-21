@@ -13,6 +13,11 @@ impl Contract {
         min_fee: i128,
         max_fee: i128,
     ) -> Result<(), ContractError> {
+        // Without this, anyone could re-run initialize on a live contract and
+        // install themselves as admin and fee collector.
+        if env.storage().persistent().has(&DataKey::Admin) {
+            return Err(ContractError::AlreadyInitialized);
+        }
         admin.require_auth();
         Self::check_zero_address(&env, &admin)?;
         Self::check_zero_address(&env, &fee_collector)?;

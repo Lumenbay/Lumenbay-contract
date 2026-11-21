@@ -1027,6 +1027,54 @@ fn fund_fails_if_not_pending() {
 }
 
 #[test]
+fn fund_twice_is_rejected_and_moves_no_extra_funds() {
+    let (env, client) = setup();
+    let admin = Address::generate(&env);
+    let buyer = Address::generate(&env);
+    let seller = Address::generate(&env);
+
+    let token_id = env.register_stellar_asset_contract_v2(admin.clone());
+    let token_admin = soroban_sdk::token::StellarAssetClient::new(&env, &token_id.address());
+    let token = soroban_sdk::token::Client::new(&env, &token_id.address());
+
+    env.mock_all_auths();
+    client.initialize(&admin, &admin, &0, &0, &0);
+    token_admin.mint(&buyer, &2000);
+
+    let escrow_id = client.create_escrow(
+        &buyer,
+        &seller,
+        &token_id.address(),
+        &1000,
+        &None,
+        &None,
+        &None,
+        &None,
+    );
+    client.fund_escrow(&escrow_id);
+
+    let result = client.try_fund_escrow(&escrow_id);
+    assert_eq!(result, Err(Ok(ContractError::EscrowAlreadyFunded)));
+    assert_eq!(token.balance(&buyer), 1000);
+    assert_eq!(token.balance(&client.address), 1000);
+}
+
+#[test]
+fn initialize_cannot_be_called_twice() {
+    let (env, client) = setup();
+    let admin = Address::generate(&env);
+    let attacker = Address::generate(&env);
+
+    env.mock_all_auths();
+    client.initialize(&admin, &admin, &100, &0, &0);
+
+    let result = client.try_initialize(&attacker, &attacker, &10_000, &0, &0);
+    assert_eq!(result, Err(Ok(ContractError::AlreadyInitialized)));
+    assert_eq!(client.get_admin(), Some(admin.clone()));
+    assert_eq!(client.get_fee_collector(), Some(admin));
+}
+
+#[test]
 fn fund_fails_for_nonexistent_escrow() {
     let (env, client) = setup();
     let admin = Address::generate(&env);

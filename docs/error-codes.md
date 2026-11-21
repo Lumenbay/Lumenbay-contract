@@ -175,6 +175,14 @@ Size limits enforced by error 60:
 
 ---
 
+## Initialization (182)
+
+| Code | Variant | Message | Recovery hint |
+|------|---------|---------|---------------|
+| 182 | `AlreadyInitialized` | The contract has already been initialized. | Initialization runs once. Use `transfer_admin`, `set_fee_collector` or `set_fee_percentage` to change settings. |
+
+---
+
 ## Updating this document
 
 When adding a new `ContractError` variant:
