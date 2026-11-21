@@ -10,7 +10,6 @@
 //! 4. Default tiers set on initialize
 //! 5. Multiple releases accumulate volume
 
-#![cfg(test)]
 mod volume_tests {
     use crate::{Contract, ContractClient};
     use soroban_sdk::{

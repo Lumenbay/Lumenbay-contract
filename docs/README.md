@@ -4,8 +4,6 @@ This directory contains technical notes, implementation summaries, examples, and
 
 | File | Description |
 | ---- | ----------- |
-| [`dispute-resolution-v2-examples.rs`](./dispute-resolution-v2-examples.rs) | Rust examples demonstrating the multi-arbiter dispute resolution flow. |
-| [`dispute-resolution-v2-multi-arbiters.md`](./dispute-resolution-v2-multi-arbiters.md) | Design documentation for multi-arbiter consensus dispute resolution. |
 | [`error-codes.md`](./error-codes.md) | Reference table for contract error codes and recovery guidance. |
 | [`fee-calculation-fixes.md`](./fee-calculation-fixes.md) | Notes on fee calculation flaws and safer implementation patterns. |
 | [`implementation-summary-v2.md`](./implementation-summary-v2.md) | Summary of the Dispute Resolution V2 implementation. |

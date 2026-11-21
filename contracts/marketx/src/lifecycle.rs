@@ -129,8 +129,13 @@ impl Contract {
             .get(&DataKey::Escrow(escrow_id))
             .ok_or(ContractError::EscrowNotFound)?;
 
-        // 2. Validate escrow is in a fundable state
-        if escrow.status != EscrowStatus::Pending && escrow.status != EscrowStatus::Funded {
+        // 2. Validate escrow is in a fundable state. Funding twice would pull the
+        //    amount again while release only pays out `escrow.amount` once,
+        //    stranding the second deposit in the contract.
+        if escrow.status == EscrowStatus::Funded {
+            return Err(ContractError::EscrowAlreadyFunded);
+        }
+        if escrow.status != EscrowStatus::Pending {
             return Err(ContractError::InvalidEscrowState);
         }
 
@@ -752,13 +757,6 @@ impl Contract {
             actor.clone(),
         );
 
-        // #204: record resolution in arbiter reputation
-        if let Some(arbiter) = &escrow.arbiter {
-            Self::record_arbiter_resolution(&env, arbiter);
-        }
-        // #201: return stake to arbiter (no active appeal yet)
-        Self::return_arbiter_stake(&env, escrow_id);
-
         Ok(())
     }
 
@@ -783,17 +781,6 @@ impl Contract {
 
         if env.ledger().sequence() <= claimable_at {
             return Err(ContractError::AppealWindowNotClosed);
-        }
-
-        // Check if there's an active (unresolved) appeal
-        if let Some(appeal) = env
-            .storage()
-            .persistent()
-            .get::<DataKey, AppealRecord>(&DataKey::Appeal(escrow_id))
-        {
-            if !appeal.resolved {
-                return Err(ContractError::AppealAlreadyFiled);
-            }
         }
 
         match escrow.status {

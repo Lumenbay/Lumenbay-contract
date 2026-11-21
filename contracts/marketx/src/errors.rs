@@ -106,4 +106,6 @@ pub enum ContractError {
     NoPendingUpgrade = 180,
     /// The upgrade timelock has not yet elapsed (#242).
     UpgradeTimelockNotElapsed = 181,
+    /// `initialize` was called on a contract that already has an admin.
+    AlreadyInitialized = 182,
 }

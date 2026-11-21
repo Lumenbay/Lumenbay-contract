@@ -10,10 +10,7 @@ use soroban_sdk::{
 
 use crate::errors::ContractError;
 // MAX_METADATA_SIZE was warned as unused, but it's used later. Keep it.
-use crate::types::{
-    BuyerContribution, EscrowItem, Milestone, MAX_BULK_ESCROWS_PER_CALL, MAX_GROUP_BUY_BUYERS,
-    MAX_METADATA_SIZE, MAX_MILESTONES_PER_ESCROW, MAX_PAGE_SIZE,
-};
+use crate::types::{EscrowItem, MAX_BULK_ESCROWS_PER_CALL, MAX_METADATA_SIZE, MAX_PAGE_SIZE};
 use crate::{
     BulkEscrowRequest, Contract, ContractClient, EscrowCreatedEvent, FundsReleasedEvent,
     StatusChangeEvent,
@@ -1024,6 +1021,54 @@ fn fund_fails_if_not_pending() {
 
     let result = client.try_fund_escrow(&escrow_id);
     assert_eq!(result, Err(Ok(ContractError::InvalidEscrowState)));
+}
+
+#[test]
+fn fund_twice_is_rejected_and_moves_no_extra_funds() {
+    let (env, client) = setup();
+    let admin = Address::generate(&env);
+    let buyer = Address::generate(&env);
+    let seller = Address::generate(&env);
+
+    let token_id = env.register_stellar_asset_contract_v2(admin.clone());
+    let token_admin = soroban_sdk::token::StellarAssetClient::new(&env, &token_id.address());
+    let token = soroban_sdk::token::Client::new(&env, &token_id.address());
+
+    env.mock_all_auths();
+    client.initialize(&admin, &admin, &0, &0, &0);
+    token_admin.mint(&buyer, &2000);
+
+    let escrow_id = client.create_escrow(
+        &buyer,
+        &seller,
+        &token_id.address(),
+        &1000,
+        &None,
+        &None,
+        &None,
+        &None,
+    );
+    client.fund_escrow(&escrow_id);
+
+    let result = client.try_fund_escrow(&escrow_id);
+    assert_eq!(result, Err(Ok(ContractError::EscrowAlreadyFunded)));
+    assert_eq!(token.balance(&buyer), 1000);
+    assert_eq!(token.balance(&client.address), 1000);
+}
+
+#[test]
+fn initialize_cannot_be_called_twice() {
+    let (env, client) = setup();
+    let admin = Address::generate(&env);
+    let attacker = Address::generate(&env);
+
+    env.mock_all_auths();
+    client.initialize(&admin, &admin, &100, &0, &0);
+
+    let result = client.try_initialize(&attacker, &attacker, &10_000, &0, &0);
+    assert_eq!(result, Err(Ok(ContractError::AlreadyInitialized)));
+    assert_eq!(client.get_admin(), Some(admin.clone()));
+    assert_eq!(client.get_fee_collector(), Some(admin));
 }
 
 #[test]
@@ -2094,33 +2139,6 @@ fn test_escrow_without_items_uses_full_release() {
     assert_eq!(token.balance(&seller), 1000);
     let escrow = client.get_escrow(&escrow_id).unwrap();
     assert_eq!(escrow.status, crate::types::EscrowStatus::Released);
-}
-
-#[test]
-fn trigger_time_lock_release_fails_if_pending_unfunded() {
-    let (env, client) = setup();
-    let admin = Address::generate(&env);
-    let buyer = Address::generate(&env);
-    let seller = Address::generate(&env);
-
-    let token_id = env.register_stellar_asset_contract_v2(admin.clone());
-
-    env.mock_all_auths();
-    client.initialize(&admin, &admin, &0, &0, &0);
-
-    let escrow_id = client.create_escrow(
-        &buyer,
-        &seller,
-        &token_id.address(),
-        &1000,
-        &None,
-        &None,
-        &None,
-        &None,
-    );
-
-    let result = client.try_trigger_time_lock_release(&escrow_id);
-    assert_eq!(result, Err(Ok(ContractError::InvalidEscrowState)));
 }
 
 #[test]
@@ -3439,47 +3457,6 @@ fn test_create_escrow_rejects_arbiter_equal_to_buyer_or_seller() {
 }
 
 #[test]
-fn test_configure_multi_arbiters_rejects_conflicted_arbiter() {
-    let (env, client) = setup();
-    let admin = Address::generate(&env);
-    let buyer = Address::generate(&env);
-    let seller = Address::generate(&env);
-    let token = Address::generate(&env);
-    let honest_arbiter = Address::generate(&env);
-
-    env.mock_all_auths();
-    client.initialize(&admin, &admin, &250, &0, &0);
-
-    let escrow_id =
-        client.create_escrow(&buyer, &seller, &token, &1000, &None, &None, &None, &None);
-
-    // Buyer tries to sneak themselves into the multi-arbiter set.
-    let mut arbiters = Vec::new(&env);
-    arbiters.push_back(honest_arbiter.clone());
-    arbiters.push_back(buyer.clone());
-
-    let result = client.try_configure_multi_arbiters(&escrow_id, &arbiters, &2);
-    assert_eq!(result, Err(Ok(ContractError::ArbiterConflictOfInterest)));
-
-    // Seller in the set is rejected too.
-    let mut arbiters = Vec::new(&env);
-    arbiters.push_back(honest_arbiter.clone());
-    arbiters.push_back(seller.clone());
-
-    let result = client.try_configure_multi_arbiters(&escrow_id, &arbiters, &2);
-    assert_eq!(result, Err(Ok(ContractError::ArbiterConflictOfInterest)));
-
-    // A clean set of independent arbiters is accepted.
-    let other_arbiter = Address::generate(&env);
-    let mut arbiters = Vec::new(&env);
-    arbiters.push_back(honest_arbiter);
-    arbiters.push_back(other_arbiter);
-
-    client.configure_multi_arbiters(&escrow_id, &arbiters, &2);
-    assert!(client.get_arbiters_config(&escrow_id).is_some());
-}
-
-#[test]
 fn test_create_bulk_escrows_rejects_zero_buyer() {
     let (env, client) = setup();
     let admin = Address::generate(&env);
@@ -4092,95 +4069,6 @@ fn non_admin_cannot_execute_or_cancel_an_upgrade() {
 // ─── Issue #260: Input hardening — bounded collections & typed index errors ──
 
 #[test]
-fn test_complete_milestone_invalid_index_fails() {
-    let (env, client) = setup();
-    let admin = Address::generate(&env);
-    let buyer = Address::generate(&env);
-    let seller = Address::generate(&env);
-
-    let token_id = env.register_stellar_asset_contract_v2(admin.clone());
-    let token_admin = soroban_sdk::token::StellarAssetClient::new(&env, &token_id.address());
-
-    env.mock_all_auths();
-    client.initialize(&admin, &admin, &0, &0, &0);
-
-    let mut milestones = Vec::new(&env);
-    milestones.push_back(Milestone {
-        description: Bytes::new(&env),
-        amount: 50_000_000,
-        completed: false,
-        completed_at: None,
-    });
-
-    token_admin.mint(&buyer, &50_000_000);
-
-    let escrow_id = client.create_milestone_escrow(
-        &buyer,
-        &seller,
-        &token_id.address(),
-        &50_000_000,
-        &milestones,
-        &None,
-        &None,
-    );
-
-    client.fund_escrow(&escrow_id);
-
-    // Out-of-range milestone index must return a typed error, not panic.
-    let result = client.try_complete_milestone(&escrow_id, &5u32);
-    assert_eq!(result, Err(Ok(ContractError::MilestoneNotFound)));
-}
-
-#[test]
-fn test_create_milestone_escrow_rejects_too_many_milestones() {
-    let (env, client) = setup();
-    let admin = Address::generate(&env);
-    let buyer = Address::generate(&env);
-    let seller = Address::generate(&env);
-    let token = Address::generate(&env);
-
-    env.mock_all_auths();
-    client.initialize(&admin, &admin, &0, &0, &0);
-
-    let make_milestones = |count: u32| -> Vec<Milestone> {
-        let mut milestones = Vec::new(&env);
-        for _ in 0..count {
-            milestones.push_back(Milestone {
-                description: Bytes::new(&env),
-                amount: 1,
-                completed: false,
-                completed_at: None,
-            });
-        }
-        milestones
-    };
-
-    // Exactly MAX_MILESTONES_PER_ESCROW is accepted.
-    let escrow_id = client.create_milestone_escrow(
-        &buyer,
-        &seller,
-        &token,
-        &(MAX_MILESTONES_PER_ESCROW as i128),
-        &make_milestones(MAX_MILESTONES_PER_ESCROW),
-        &None,
-        &None,
-    );
-    assert!(client.get_escrow(&escrow_id).is_some());
-
-    // One over the limit is rejected with a typed error.
-    let result = client.try_create_milestone_escrow(
-        &buyer,
-        &seller,
-        &token,
-        &((MAX_MILESTONES_PER_ESCROW + 1) as i128),
-        &make_milestones(MAX_MILESTONES_PER_ESCROW + 1),
-        &None,
-        &None,
-    );
-    assert_eq!(result, Err(Ok(ContractError::TooManyItems)));
-}
-
-#[test]
 fn test_create_bulk_escrows_rejects_too_many_requests() {
     let (env, client) = setup();
     let admin = Address::generate(&env);
@@ -4213,55 +4101,6 @@ fn test_create_bulk_escrows_rejects_too_many_requests() {
         &buyer,
         &token,
         &make_requests(MAX_BULK_ESCROWS_PER_CALL + 1),
-    );
-    assert_eq!(result, Err(Ok(ContractError::TooManyItems)));
-}
-
-#[test]
-fn test_create_group_buy_escrow_rejects_too_many_buyers() {
-    let (env, client) = setup();
-    let admin = Address::generate(&env);
-    let seller = Address::generate(&env);
-    let token = Address::generate(&env);
-
-    env.mock_all_auths();
-    client.initialize(&admin, &admin, &0, &0, &0);
-
-    let make_buyers = |count: u32| -> Vec<BuyerContribution> {
-        let mut buyers = Vec::new(&env);
-        for _ in 0..count {
-            buyers.push_back(BuyerContribution {
-                buyer: Address::generate(&env),
-                amount: 1,
-                funded: false,
-            });
-        }
-        buyers
-    };
-
-    let deadline = env.ledger().sequence() + 1000;
-
-    // Exactly MAX_GROUP_BUY_BUYERS is accepted.
-    let escrow_id = client.create_group_buy_escrow(
-        &seller,
-        &token,
-        &(MAX_GROUP_BUY_BUYERS as i128),
-        &make_buyers(MAX_GROUP_BUY_BUYERS),
-        &deadline,
-        &None,
-        &None,
-    );
-    assert!(client.get_escrow(&escrow_id).is_some());
-
-    // One over the limit is rejected with a typed error.
-    let result = client.try_create_group_buy_escrow(
-        &seller,
-        &token,
-        &((MAX_GROUP_BUY_BUYERS + 1) as i128),
-        &make_buyers(MAX_GROUP_BUY_BUYERS + 1),
-        &deadline,
-        &None,
-        &None,
     );
     assert_eq!(result, Err(Ok(ContractError::TooManyItems)));
 }

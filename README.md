@@ -348,7 +348,7 @@ This schema provides everything needed for user escrow lists without an on-chain
 
 The contract exposes two read-only helpers for sizing and load-planning:
 
-- `estimate_storage_rent(escrow_id)` returns the approximate persistent footprint for an escrow, including companion milestone, time-lock, and group-buy entries when present.
+- `estimate_storage_rent(escrow_id)` returns the approximate persistent footprint for an escrow, including its companion storage entries.
 - `get_resource_profile()` returns the contract's bounded size limits so off-chain load tests can target worst-case payloads without hard-coding constants.
 
 These helpers are intentionally conservative. They report serialized footprint and contract ceilings, not the live network rent price. Integrators should combine the returned byte counts with current Soroban fee parameters when they need an XLM estimate.

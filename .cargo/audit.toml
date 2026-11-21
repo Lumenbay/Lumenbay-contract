@@ -1,0 +1,12 @@
+# cargo-audit configuration (read automatically by `cargo audit`).
+
+[advisories]
+ignore = [
+  # crypto-bigint 0.5.x timing variability (RUSTSEC-2026-0387).
+  # Only reachable through soroban-sdk's `testutils` (soroban-env-host -> k256/p256 ->
+  # elliptic-curve 0.13), which runs the contract in a simulated host during tests.
+  # It is not part of the deployed Wasm: `cargo tree -i crypto-bigint -e normal
+  # --target wasm32v1-none -p marketx` prints nothing. The fix (>= 0.7.6) needs
+  # elliptic-curve 0.14 upstream, so remove this entry once soroban-sdk upgrades.
+  "RUSTSEC-2026-0387",
+]

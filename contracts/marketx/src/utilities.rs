@@ -372,4 +372,21 @@ impl Contract {
     pub(crate) fn storage_entry_bytes<K: ToXdr, V: ToXdr>(env: &Env, key: K, value: V) -> u32 {
         Self::xdr_len(env, key).saturating_add(Self::xdr_len(env, value))
     }
+
+    /// Publishes the canonical lifecycle event every status transition emits.
+    pub(crate) fn emit_status_change(
+        env: &Env,
+        escrow_id: u64,
+        from: EscrowStatus,
+        to: EscrowStatus,
+        actor: Address,
+    ) {
+        StatusChangeEvent {
+            escrow_id,
+            from_status: from,
+            to_status: to,
+            actor,
+        }
+        .publish(env);
+    }
 }

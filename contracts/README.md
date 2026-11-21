@@ -36,11 +36,6 @@ The core escrow contract. Handles the full lifecycle of a marketplace transactio
 | Partial releases | `release_item`, `release_partial` |
 | Dispute resolution | `refund_escrow`, `resolve_dispute`, `claim_disputed_funds` |
 | Mediation phase | `open_mediation`, `propose_mediation_settlement`, `get_mediation_phase` |
-| Evidence & appeals | `open_evidence_window`, `submit_evidence`, `expire_evidence_window`, `file_appeal`, `resolve_appeal` |
-| Arbiter staking | `stake_as_arbiter`, `slash_arbiter` |
-| Milestones | `create_milestone_escrow`, `complete_milestone` |
-| Time-locks | `set_time_lock`, `trigger_time_lock_release` |
-| Group buys | `create_group_buy_escrow`, `fund_group_buy`, `withdraw_group_buy_contribution` |
 | Bulk ops | `create_bulk_escrows`, `batch_collect_fees` |
 | Fee management | `set_fee_percentage`, `set_fee_caps`, `set_fee_collector`, `withdraw_fees` |
 | Circuit breakers | `pause` / `unpause` (global), `pause_token` / `unpause_token` (per-token) |
