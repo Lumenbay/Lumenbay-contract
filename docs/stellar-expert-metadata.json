@@ -1,6 +1,6 @@
 {
   "name": "MarketX Escrow",
-  "description": "Soroban escrow contract for milestone releases, dispute handling, and configurable marketplace fees.",
+  "description": "Soroban escrow for the Lumenbay P2P marketplace: buyer-funded escrow, delivery release, disputes and configurable fees.",
   "homepage": "https://github.com/MarketXpress/MarketX-contract",
   "repository": "https://github.com/MarketXpress/MarketX-contract",
   "source": "https://github.com/MarketXpress/MarketX-contract/tree/main/contracts/marketx",

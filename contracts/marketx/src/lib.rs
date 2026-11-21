@@ -4,23 +4,18 @@
 #![allow(clippy::unnecessary_cast)]
 #![allow(dead_code)]
 
-//! # MarketX Smart Contract
+//! # Lumenbay Escrow Contract
 //!
 //! The public contract interface is implemented across domain-focused modules.
 
 use soroban_sdk::contract;
 
 mod admin;
-mod arbiters;
 mod errors;
 mod escrow;
 mod fees;
-mod group_buys;
 mod lifecycle;
 mod mediation;
-mod milestones;
-mod multi_arbiter;
-mod time_locks;
 mod token_controls;
 mod types;
 mod utilities;
@@ -35,28 +30,27 @@ mod test_integer_safety;
 #[cfg(test)]
 mod test_volume;
 
-/// The MarketX escrow contract.
+/// The Lumenbay escrow contract.
 ///
 /// Its public interface is implemented by the domain modules declared above.
 #[contract]
 pub struct Contract;
 
-soroban_sdk::contractmeta!(key = "name", val = "MarketX Escrow");
+soroban_sdk::contractmeta!(key = "name", val = "Lumenbay Escrow");
 soroban_sdk::contractmeta!(
     key = "description",
-    val =
-        "Soroban escrow contract with milestone releases, dispute handling, and configurable fees."
+    val = "Soroban escrow for the Lumenbay P2P marketplace: buyer-funded escrow, delivery release, disputes and configurable fees."
 );
 soroban_sdk::contractmeta!(
     key = "homepage",
-    val = "https://github.com/MarketXpress/MarketX-contract"
+    val = "https://lumenbay-frontend.vercel.app"
 );
 soroban_sdk::contractmeta!(
     key = "repository",
-    val = "https://github.com/MarketXpress/MarketX-contract"
+    val = "https://github.com/Lumenbay/Lumenbay-contract"
 );
 soroban_sdk::contractmeta!(
     key = "source",
-    val = "https://github.com/MarketXpress/MarketX-contract/tree/main/contracts/marketx"
+    val = "https://github.com/Lumenbay/Lumenbay-contract/tree/main/contracts/marketx"
 );
 soroban_sdk::contractmeta!(key = "version", val = "v1.0.0");
