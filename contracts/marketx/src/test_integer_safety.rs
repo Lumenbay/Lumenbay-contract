@@ -10,7 +10,6 @@
 //! - Large amounts don't overflow
 //! - Max i128 value doesn't panic
 
-#![cfg(test)]
 mod integer_safety_tests {
     use crate::{Contract, ContractClient};
     use soroban_sdk::{
