@@ -154,6 +154,21 @@ pub const MAX_ITEMS_PER_ESCROW: u32 = 50;
 
 pub const VOLUME_RESET_INTERVAL: u32 = 1_576_800;
 
+/// Smallest units per whole token for 7-decimal Stellar assets (XLM, USDC):
+/// 1 XLM = 10,000,000 stroops. Volume thresholds are stored in these units.
+pub const STROOPS_PER_TOKEN: i128 = 10_000_000;
+
+/// Upper bound on a volume-tier discount, in basis points *of the fee*.
+/// 5,000 means a loyal buyer can never pay less than half the normal fee.
+pub const MAX_VOLUME_DISCOUNT_BPS: u32 = 5_000;
+
+/// Buyer volume tiers.
+///
+/// Thresholds are cumulative released volume in the token's smallest unit
+/// (stroops for XLM). A tier's discount is a percentage **of the fee**, in
+/// basis points, not a subtraction from `fee_bps`: with a 1% fee, a 250 bps
+/// tier discount gives 0.975%. A discount therefore never cancels the fee,
+/// whatever `fee_bps` is set to.
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct VolumeTierConfig {
@@ -169,9 +184,11 @@ pub struct VolumeTierConfig {
 impl Default for VolumeTierConfig {
     fn default() -> Self {
         Self {
-            tier_1_threshold: 100_000,
-            tier_2_threshold: 1_000_000,
-            tier_3_threshold: 10_000_000,
+            // 1,000 / 10,000 / 100,000 XLM of released volume.
+            tier_1_threshold: 1_000 * STROOPS_PER_TOKEN,
+            tier_2_threshold: 10_000 * STROOPS_PER_TOKEN,
+            tier_3_threshold: 100_000 * STROOPS_PER_TOKEN,
+            // 1% / 2.5% / 5% off the fee.
             tier_1_discount_bps: 100,
             tier_2_discount_bps: 250,
             tier_3_discount_bps: 500,
@@ -201,6 +218,19 @@ impl VolumeTierConfig {
             _ => 0,
         }
     }
+}
+
+/// Emitted when the admin replaces the volume tier configuration.
+#[contractevent(topics = ["volume_tiers_set"])]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct VolumeTiersSetEvent {
+    pub tier_1_threshold: i128,
+    pub tier_2_threshold: i128,
+    pub tier_3_threshold: i128,
+    pub tier_1_discount_bps: u32,
+    pub tier_2_discount_bps: u32,
+    pub tier_3_discount_bps: u32,
+    pub actor: Address,
 }
 
 #[contractevent(topics = ["volume_updated"], data_format = "vec")]
