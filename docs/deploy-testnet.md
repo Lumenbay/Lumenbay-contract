@@ -9,7 +9,8 @@ A step-by-step runbook. Every command was used for the current testnet deploymen
 | Network | Stellar testnet (`Test SDF Network ; September 2015`) |
 | Escrow contract | `CDSLTYUH6YDS5WIW3QB2CRBKPP2YSKURD36ZEK7LKSZBHIGVTKUNFMYG` |
 | Wasm hash (running) | `2496636ac795e16b3d1769a2ad63af2552aa05e6b0fdd7b63d35b613ed8ab184` (commit `0e5ceac`) |
-| Pending upgrade | `6dc9c278d7c592f1506c6a07f5ed324bb9e19d2592a263a93ac6175ad00e9bb5` (commit `24659f3`, slim build), proposed at ledger 5856540, executable from ledger 5891100. See [Upgrading the contract](#upgrading-the-contract). |
+| Pending upgrade | `942b3bee71b620b5556c1d6b7b780b41ba09a98ee0d9a300a2c7aa9208dd176e`: the slim build plus the fee fix, built from commit `41744f6` on branch `fix/fee-volume-discount`. Proposed at ledger 5856919, executable from ledger **5891479** (about 2026-11-24 00:45 UTC). **Merge that branch before executing.** See [Upgrading the contract](#upgrading-the-contract). |
+| Volume tiers (stored) | Legacy 0.01 / 0.1 / 1 XLM. Correct them with `set_volume_tiers` right after the upgrade (step 6 below). |
 | Admin & fee collector | `GAZ2UWDIVCFK5TSNAO4TH6L273ZAA45LZVNGCF3BU3G3YKKF5FAQH4H7` |
 | Fee | 100 bps (1%), no minimum, no cap |
 | Native XLM token (SAC) | `CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC` |
@@ -138,8 +139,20 @@ escrows. It goes through a two-step, timelocked admin flow (`src/admin.rs`):
 `get_pending_upgrade` is public, so anyone can see a proposal during the
 window. `cancel_upgrade` withdraws it. Both execute and cancel need the admin.
 
-The commands below are the ones used to propose the upgrade from `0e5ceac`
-(hash `2496636a…`) to the slim build on `main` at `24659f3` (hash `6dc9c278…`).
+### The pending testnet upgrade
+
+| | |
+|---|---|
+| From | `0e5ceac`: `2496636ac795e16b3d1769a2ad63af2552aa05e6b0fdd7b63d35b613ed8ab184` |
+| To | `41744f6` (`fix/fee-volume-discount`, i.e. `main` at `24659f3` plus the fee fix): `942b3bee71b620b5556c1d6b7b780b41ba09a98ee0d9a300a2c7aa9208dd176e` |
+| Proposed | ledger 5856919, [tx](https://stellar.expert/explorer/testnet/tx/f92ea8cfe22265e65b08f0cdca55bbb631f197d08206ec334790fe211880b2d0) |
+| Executable from | ledger **5891479**, about 2026-11-24 00:45 UTC (01:45 Africa/Lagos), give or take an hour; testnet ran about 5.0 s per ledger when this was proposed |
+| Superseded | a first proposal for the slim build without the fee fix (`6dc9c278…`, ledger 5856540) was withdrawn with `cancel_upgrade` ([tx](https://stellar.expert/explorer/testnet/tx/d0b8ec88467ce1ebb67f5a24b45f87597d0076b567faa9139baa11a1fabba5eb)), so the contract switches once, straight to the fixed build |
+
+The proposed wasm is not on `main` until `fix/fee-volume-discount` is merged.
+Merge it before executing, then confirm that `main` rebuilds to the proposed
+hash (step 4). The wasm hash depends only on the source, so a squash or merge
+commit does not change it.
 
 ### 1. Identify the running build
 
@@ -160,8 +173,8 @@ stellar contract build --manifest-path ../old/Cargo.toml   # prints "Wasm Hash"
 ### 2. Check storage compatibility
 
 Upgraded code must decode the escrows already stored. Before every upgrade,
-diff every `#[contracttype]` that is written to storage, especially `Escrow`
-and `DataKey`:
+diff every `#[contracttype]` that is written to storage, especially `Escrow`,
+`DataKey` and `VolumeTierConfig`:
 
 ```bash
 git diff <old-commit> <new-commit> -- contracts/marketx/src/types.rs
@@ -170,8 +183,13 @@ git diff <old-commit> <new-commit> -- contracts/marketx/src/types.rs
 Never remove, reorder, rename or retype a stored field. To retire a feature,
 keep its fields and types (they decode as empty) and remove only the functions.
 That is why the slim build still has `Escrow.milestones`, `time_lock` and
-`group_buy` and the `Milestone`, `TimeLock` and `GroupBuy` types. For
-`0e5ceac` to `24659f3`, `types.rs` is byte-identical.
+`group_buy` and the `Milestone`, `TimeLock` and `GroupBuy` types. From `0e5ceac`
+to `41744f6`, no stored type or `DataKey` changed. The fee fix adds only
+constants, an event and a function, and changes the *default* tier values.
+
+Also check that no live escrow depends on a removed feature. The slim build
+dropped arbiters, appeals, milestones, time locks and group buys. None of live
+escrows #1 to #5 had an arbiter, appeal, milestone, time lock or group buy.
 
 ### 3. Rehearse on a throwaway contract
 
@@ -210,58 +228,88 @@ stellar contract invoke --id lumenbay-rehearsal --source-account lumenbay-test-b
 Upgrade the rehearsal contract, then test every path on the old escrows:
 `get_escrow`, `release_escrow`, `refund_escrow`, `resolve_dispute` (as the
 admin, `--resolution 0` for seller, `1` for buyer), `claim_disputed_funds`, and
-a fresh create, fund and release.
+a fresh create, fund and release. Check the fee amounts in the
+`fee_collected` events.
 
-Rehearsal for this upgrade: contract
-`CADMG3WZBCFANSNH4QC7XNVT6X7AGGM7DDAADBYIYBJFJTO3EZW4UCKC`. Every path passed
-on escrows created before the upgrade.
+Rehearsals for this upgrade (all paths passed on escrows created before the
+upgrade):
+
+- `CADMG3WZBCFANSNH4QC7XNVT6X7AGGM7DDAADBYIYBJFJTO3EZW4UCKC`: slim build only
+  (`6dc9c278…`, since withdrawn).
+- `CCMTMYG2Y3ZR5MY4KENDK43DZ5MVZVSTUS53FW7NWNESPEP4SMLJCGLT`: the proposed
+  fixed build (`942b3bee…`). On the old code the bug reproduced: the first
+  1 XLM release paid 100,000 stroops and the second paid 1 stroop. After the
+  upgrade and `set_volume_tiers`, the same buyer's 1 XLM release paid exactly
+  100,000 stroops (seller 9,900,000), and a 2 XLM dispute claim paid 200,000.
 
 ### 4. Upload the new wasm and propose
 
 ```bash
-stellar contract build                       # on the new commit; note the Wasm Hash
+git checkout main && git pull                # after merging fix/fee-volume-discount
+stellar contract build                       # must print Wasm Hash 942b3bee…
 stellar contract upload --wasm target/wasm32v1-none/release/marketx.wasm \
   --source-account lumenbay-deployer --network testnet      # prints the hash
 stellar contract invoke --id $ID --source-account lumenbay-deployer --network testnet -- \
-  propose_upgrade --new_wasm_hash 6dc9c278d7c592f1506c6a07f5ed324bb9e19d2592a263a93ac6175ad00e9bb5
+  propose_upgrade --new_wasm_hash 942b3bee71b620b5556c1d6b7b780b41ba09a98ee0d9a300a2c7aa9208dd176e
 stellar contract invoke --id $ID --source-account lumenbay-deployer --network testnet --send=no -- \
   get_pending_upgrade
 ```
 
+To replace a pending proposal with a different build, run `cancel_upgrade`
+first and then propose again. Proposing again restarts the 48-hour timelock.
+
 ### 5. Execute after the timelock
 
 ```bash
-stellar ledger latest --network testnet      # wait until "sequence" >= ready_at
+stellar ledger latest --network testnet      # wait until "sequence" >= 5891479
 stellar contract invoke --id $ID --source-account lumenbay-deployer --network testnet -- \
   execute_upgrade
 ```
 
-### 6. Verify
+### 6. Correct the stored volume tiers (straight after executing)
+
+Instances initialized before the fee fix store tiers in the wrong units
+(0.01 / 0.1 / 1 XLM). The fixed fee arithmetic already bounds them, but a
+buyer with prior volume still gets 5% off the fee (0.95% instead of 1%)
+until this runs. Set the intended tiers of 1,000 / 10,000 / 100,000 XLM
+(1% / 2.5% / 5% off the fee):
+
+```bash
+stellar contract invoke --id $ID --source-account lumenbay-deployer --network testnet -- \
+  set_volume_tiers --tier_1_threshold 10000000000 --tier_2_threshold 100000000000 \
+  --tier_3_threshold 1000000000000 --tier_1_discount_bps 100 --tier_2_discount_bps 250 \
+  --tier_3_discount_bps 500
+stellar contract invoke --id $ID --source-account lumenbay-deployer --network testnet --send=no -- \
+  get_volume_tiers
+```
+
+To turn volume discounts off entirely, pass `0` for all three discounts.
+
+### 7. Verify
 
 ```bash
 stellar contract fetch --id $ID --network testnet --out-file upgraded.wasm
-shasum -a 256 upgraded.wasm                  # must equal the proposed hash
+shasum -a 256 upgraded.wasm                  # must equal 942b3bee…
 stellar contract info meta --id $ID --network testnet   # name: "Lumenbay Escrow"
-for i in 1 2 3 4; do
+for i in 1 2 3 4 5; do
   stellar contract invoke --id $ID --source-account lumenbay-deployer --network testnet --send=no -- \
     get_escrow --escrow_id $i
 done
 ```
 
-Then run a fresh create, fund and release with the test identities (section 7,
-with `--metadata`), and check that the frontend can still read escrows with
-`contract.Client.from` plus `get_escrow`.
+Then run a fresh 1 XLM create, fund and release with the test identities
+(section 7, with `--metadata`). The `fee_collected` event must show
+`fee: "100000"` and the seller must receive `9900000`. Finally, check that
+the frontend can still read escrows with `contract.Client.from` plus
+`get_escrow`.
 
-### Notes
+### How the fee bug worked (fixed in `41744f6`)
 
-- Fee volume tiers: `get_volume_tiers` defaults to thresholds of 100,000 /
-  1,000,000 / 10,000,000 stroops (0.01 / 0.1 / 1 XLM) with discounts of 100 /
-  250 / 500 bps, and `calculate_fee_internal` subtracts the discount from
-  `fee_bps`. With `fee_bps = 100`, even tier 1 cancels the whole fee, so any
-  buyer with at least 0.01 XLM of prior volume pays the 1-stroop rounding
-  minimum instead of 1%. Seen in the rehearsal: a 1 XLM release paid a fee
-  of 1 stroop. This predates the upgrade (fee code is unchanged), and no
-  function sets the tiers, so fixing it needs a code change.
-- The slim build removed arbiter staking and appeals. Before upgrading, check
-  that no stored escrow has an arbiter, stake or appeal (`get_appeal`). None
-  did here.
+The default tiers were written as 100,000 / 1,000,000 / 10,000,000 in what
+looked like whole tokens, but amounts are stroops, so the thresholds were
+0.01 / 0.1 / 1 XLM. The tier discount (100 / 250 / 500 bps) was also
+*subtracted from* `fee_bps`. With the deployed 1% fee, even tier 1 cut the fee
+to 0%, which the rounding floor turned into 1 stroop, for any buyer with at
+least 0.01 XLM of prior volume. The fix applies the discount as a share *of
+the fee* (capped at half the fee), moves the defaults to real volumes, and
+adds the admin-only `set_volume_tiers` used in step 6.
