@@ -186,6 +186,71 @@ impl Contract {
             .unwrap_or_default()
     }
 
+    /// Replace the buyer volume tiers. Admin only.
+    ///
+    /// Thresholds are cumulative volume in the token's smallest unit (stroops
+    /// for XLM) and must be strictly increasing and positive. Discounts are
+    /// basis points *of the fee*, non-decreasing, and at most
+    /// `MAX_VOLUME_DISCOUNT_BPS`. Pass all-zero discounts to disable them.
+    /// The volume-reset window (`reset_ledger`) is kept as is.
+    ///
+    /// Instances initialized before this function existed store tiers in the
+    /// wrong units; call this after upgrading to correct them.
+    pub fn set_volume_tiers(
+        env: Env,
+        tier_1_threshold: i128,
+        tier_2_threshold: i128,
+        tier_3_threshold: i128,
+        tier_1_discount_bps: u32,
+        tier_2_discount_bps: u32,
+        tier_3_discount_bps: u32,
+    ) -> Result<(), ContractError> {
+        let admin = Self::assert_admin(&env)?;
+
+        let thresholds_ok = tier_1_threshold > 0
+            && tier_1_threshold < tier_2_threshold
+            && tier_2_threshold < tier_3_threshold;
+        let discounts_ok = tier_1_discount_bps <= tier_2_discount_bps
+            && tier_2_discount_bps <= tier_3_discount_bps
+            && tier_3_discount_bps <= MAX_VOLUME_DISCOUNT_BPS;
+        if !thresholds_ok || !discounts_ok {
+            return Err(ContractError::InvalidFeeConfig);
+        }
+
+        let reset_ledger = env
+            .storage()
+            .persistent()
+            .get::<DataKey, VolumeTierConfig>(&DataKey::VolumeTiers)
+            .map(|c| c.reset_ledger)
+            .unwrap_or_else(|| env.ledger().sequence());
+
+        env.storage().persistent().set(
+            &DataKey::VolumeTiers,
+            &VolumeTierConfig {
+                tier_1_threshold,
+                tier_2_threshold,
+                tier_3_threshold,
+                tier_1_discount_bps,
+                tier_2_discount_bps,
+                tier_3_discount_bps,
+                reset_ledger,
+            },
+        );
+
+        VolumeTiersSetEvent {
+            tier_1_threshold,
+            tier_2_threshold,
+            tier_3_threshold,
+            tier_1_discount_bps,
+            tier_2_discount_bps,
+            tier_3_discount_bps,
+            actor: admin,
+        }
+        .publish(&env);
+
+        Ok(())
+    }
+
     /// Add an address to the fee exemption whitelist. Admin only.
     pub fn add_fee_whitelist(env: Env, address: Address) -> Result<(), ContractError> {
         let admin = Self::assert_admin(&env)?;

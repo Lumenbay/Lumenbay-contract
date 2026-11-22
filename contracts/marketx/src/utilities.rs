@@ -70,6 +70,16 @@ impl Contract {
         env.storage().persistent().set(&key, &next);
     }
 
+    /// `value * bps / 10_000`, rounded down, without overflowing for any
+    /// i128 token amount.
+    pub(crate) fn apply_bps(value: i128, bps: u32) -> i128 {
+        let whole = value / 10_000;
+        let remainder = value % 10_000;
+        whole
+            .saturating_mul(bps as i128)
+            .saturating_add(remainder.saturating_mul(bps as i128) / 10_000)
+    }
+
     pub(crate) fn calculate_fee_internal(
         env: &Env,
         amount: i128,
@@ -116,16 +126,15 @@ impl Contract {
             .get(&DataKey::VolumeTiers)
             .unwrap_or_default();
         let volume = Self::buyer_volume_internal(env, buyer, &volume_config);
-        let discount = volume_config
+        let discount_bps = volume_config
             .discount_bps(volume_config.tier(volume))
-            .min(500);
-        let effective_fee_bps = fee_bps.saturating_sub(discount);
+            .min(MAX_VOLUME_DISCOUNT_BPS);
 
-        let whole = amount / 10_000;
-        let remainder = amount % 10_000;
-        let mut fee: i128 = whole
-            .saturating_mul(effective_fee_bps as i128)
-            .saturating_add(remainder.saturating_mul(effective_fee_bps as i128) / 10_000);
+        // Standard fee first, then the tier discount as a share *of that fee*.
+        // Subtracting the discount from `fee_bps` instead (the old behaviour)
+        // let any discount >= fee_bps wipe out the fee entirely.
+        let mut fee = Self::apply_bps(amount, fee_bps);
+        fee = fee.saturating_sub(Self::apply_bps(fee, discount_bps));
 
         // Rounding protection: if bps > 0 and amount > 0, fee must be at least 1
         if fee == 0 && amount > 0 {
